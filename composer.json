@@ -1,5 +1,5 @@
 {
-  "name": "transbank-rocket/webpay-magento2",
+  "name": "rocket-ad/webpay-magento2",
   "description": "Modificación de Plugin oficial de magento2 para Webpay",
   "require": {
     "ext-json": "*",

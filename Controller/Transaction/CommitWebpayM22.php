@@ -90,7 +90,7 @@ class CommitWebpayM22 extends \Magento\Framework\App\Action\Action
                     
                     $this->checkoutSession->getQuote()->setIsActive(false)->save();
                     
-                    return $this->toRedirect($transactionResult->urlRedirection, ['token_ws' => $tokenWs]);
+                    return $this->resultRedirectFactory->create()->setPath('checkout/onepage/success');
                     
                 } else {
     

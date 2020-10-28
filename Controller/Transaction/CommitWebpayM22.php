@@ -6,6 +6,7 @@ use Transbank\Webpay\Model\LogHandler;
 
 use \Magento\Sales\Model\Order;
 use Transbank\Webpay\Model\WebpayOrderData;
+use Psr\Log\LoggerInterface;
 
 /**
  * Controller for commit transaction Webpay
@@ -22,6 +23,7 @@ class CommitWebpayM22 extends \Magento\Framework\App\Action\Action
         "NC" => "N cuotas sin interés",
     ];
     protected $configProvider;
+    private $_logger;
     
     public function __construct(
         \Magento\Framework\App\Action\Context $context, \Magento\Checkout\Model\Cart $cart,
@@ -29,12 +31,14 @@ class CommitWebpayM22 extends \Magento\Framework\App\Action\Action
         \Magento\Framework\Controller\Result\JsonFactory $resultJsonFactory,
         \Magento\Framework\Controller\Result\RawFactory $resultRawFactory,
         \Transbank\Webpay\Model\Config\ConfigProvider $configProvider,
+        LoggerInterface $logger,
         \Transbank\Webpay\Model\WebpayOrderDataFactory $webpayOrderDataFactory
     ) {
         
         parent::__construct($context);
         
         $this->cart = $cart;
+        $this->_logger = $logger;
         $this->checkoutSession = $checkoutSession;
         $this->resultJsonFactory = $resultJsonFactory;
         $this->resultRawFactory = $resultRawFactory;
@@ -86,11 +90,20 @@ class CommitWebpayM22 extends \Magento\Framework\App\Action\Action
                     $orderStatus = $this->configProvider->getOrderSuccessStatus();
                     $order->setState($orderStatus)->setStatus($orderStatus);
                     $order->addStatusToHistory($order->getStatus(), json_encode($transactionResult));
+
+                    $isCredit = $transactionResult->detailOutput->paymentTypeCode != "VD";
+                    $cardData = [
+                        "ending" => $transactionResult->cardDetail->cardNumber,
+                        "type" => $isCredit ? 'crédito' : 'débito',
+                        "shares" => $transactionResult->detailOutput->sharesNumber
+                    ];
+                    $this->checkoutSession->setCardData($cardData);
+
                     $order->save();
                     
                     $this->checkoutSession->getQuote()->setIsActive(false)->save();
                     
-                    return $this->resultRedirectFactory->create()->setPath('checkout/onepage/success');
+                    return $this->toRedirect($transactionResult->urlRedirection, ['token_ws' => $tokenWs]);
                     
                 } else {
     
@@ -119,12 +132,16 @@ class CommitWebpayM22 extends \Magento\Framework\App\Action\Action
                     $message = $this->getSuccessMessage($transactionResult);
                     $this->messageManager->addSuccess(__($message));
                     
+                    $this->_logger->debug("success");
+
                     return $this->resultRedirectFactory->create()->setPath('checkout/onepage/success');
                     
                 } elseif ($paymentStatus == WebpayOrderData::PAYMENT_STATUS_FAILED) { {
                         $this->checkoutSession->restoreQuote();
                         $message = $this->getRejectMessage($transactionResult);
                         $this->messageManager->addError(__($message));
+
+                        $this->_logger->debug("cart");
                         
                         return $this->resultRedirectFactory->create()->setPath('checkout/cart');
                     }
@@ -186,7 +203,11 @@ class CommitWebpayM22 extends \Magento\Framework\App\Action\Action
             <b>Tipo de Pago: </b>{$paymentType}<br>
             <b>Tipo de Cuotas: </b>{$tipoCuotas}<br>
             <b>N&uacute;mero de cuotas: </b>{$transactionResult['detailOutput']['sharesNumber']}
-        </p>";
+        </p>
+        
+        <script></script>
+        "
+        ;
         
         return $message;
     }
